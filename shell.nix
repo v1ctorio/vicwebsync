@@ -12,6 +12,7 @@ in pkgs.mkShell {
       python-pkgs.requests
       python-pkgs.python-dotenv
       python-pkgs.pymongo
+      python-pkgs.flask
     ]))
   ];
 }
