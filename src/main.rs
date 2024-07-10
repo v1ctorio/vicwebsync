@@ -9,8 +9,16 @@ use mongodb::{
 	bson::{Document, doc},
 	sync::{Client, Collection} 
 };
+use rouille::Request;
+use rouille::Response;
 
 fn main() {
+
+
+    rouille::start_server("0.0.0.0:80", move |request| {
+        Response::text("hello cHAT")
+    });
+
     dotenv::dotenv().ok();
     let tgtoken = dotenv::var("TG_TOKEN").unwrap();
     let tgchannelid = dotenv::var("TG_CHAT_ID").unwrap();
