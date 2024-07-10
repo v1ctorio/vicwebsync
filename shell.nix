@@ -4,7 +4,7 @@ let
     config.allowUnfree = true;
   };
 in pkgs.mkShell {
-  packages = [
+  packages = with pkgs; [
   rustc
   cargo
   ];
