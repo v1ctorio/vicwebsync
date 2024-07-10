@@ -7,8 +7,9 @@ use frankenstein::UpdateContent;
 
 use mongodb::{ 
     bson::{Document, doc, oid},
-    Client,
-    Collection,
+    sync::{Client, Collection},
+    error::Result,
+    error::Error
 }; 
 use rouille::Request;
 use rouille::Response;
@@ -16,16 +17,13 @@ use rouille::Response;
 use std::thread;
 use chrono;
 
-#[tokio::main]
-async fn main()  -> Result<(), Box<dyn std::error::Error>>{
-
-
-    let webserver = thread::spawn(|| {
+fn main() -> Result<()>{
+    println!("Hello, chat program started!");
+    thread::spawn(|| {
         rouille::start_server("0.0.0.0:5432", move |req| {
             handle_req(&req)
         });
     });
-    webserver.join().expect("webserver thread panicked");
     dotenv::dotenv().ok();
     
     let tgtoken = dotenv::var("TG_TOKEN").unwrap();
@@ -41,9 +39,10 @@ async fn main()  -> Result<(), Box<dyn std::error::Error>>{
     // let mongooptions =
     // ClientOptions::parse(&mongouri, ResolverConfig::cloudflare())
     //    .await?;
-    let mongoclient = Client::with_uri_str(mongouri).await?;
+    let mongoclient = Client::with_uri_str(mongouri)?;
     let db = mongoclient.database("vicweb");
     let posts_collection: Collection<Document> = db.collection("posts");
+    Ok::<(), Error>(()) ;
 
     loop {
         let result = tgapi.get_updates(&update_params);
@@ -58,14 +57,14 @@ async fn main()  -> Result<(), Box<dyn std::error::Error>>{
                         
                         //(if chat id is tgchannel id)
                         if chatid == tgchannelid.parse::<i64>().unwrap() {
-                            let existing_post = posts_collection.find_one(doc!{"text": &text}, None).await?;
+                            let existing_post = posts_collection.find_one(doc!{"text": &text}, None)?;
                             if existing_post.is_none() {
                                 let post = doc! {
                                     "text": &text,
                                     "created_at": chrono::Utc::now().timestamp(),
                                     "_id": oid::ObjectId::new(),
                                 };
-                                match posts_collection.insert_one(post.clone(),None).await {
+                                match posts_collection.insert_one(post.clone(),None) {
                                     Ok(resulting_post) => {
                                         println!("New post added to db: {:?}", resulting_post);
                                     }

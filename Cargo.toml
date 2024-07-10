@@ -7,6 +7,9 @@ edition = "2021"
 chrono = "0.4.38"
 dotenv = "0.15.0"
 frankenstein = "0.31.0"
-mongodb = "2.8.2"
 rouille = "3.6.2" 
 tokio = "1.38.0"
+
+[dependencies.mongodb]
+version = "2.8.2"
+features = ["tokio-sync"]
