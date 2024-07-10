@@ -9,8 +9,6 @@ use mongodb::{
     bson::{Document, doc, oid},
     Client,
     Collection,
-    options::ClientOptions,
-    options::ResolverConfig,
 }; 
 use rouille::Request;
 use rouille::Response;
@@ -27,6 +25,7 @@ async fn main()  -> Result<(), Box<dyn std::error::Error>>{
             handle_req(&req)
         });
     });
+    webserver.join().expect("webserver thread panicked");
     dotenv::dotenv().ok();
     
     let tgtoken = dotenv::var("TG_TOKEN").unwrap();
@@ -37,8 +36,8 @@ async fn main()  -> Result<(), Box<dyn std::error::Error>>{
     let upb = GetUpdatesParams::builder();
     let mut update_params = upb.clone().build();
 
-    let mongouri = "mongodb://idk";
-    //let mongouri = dotenv::var("MONGOURL").unwrap();
+    //let mongouri = "mongodb://idk";
+    let mongouri = dotenv::var("MONGOURL").unwrap();
     // let mongooptions =
     // ClientOptions::parse(&mongouri, ResolverConfig::cloudflare())
     //    .await?;
@@ -59,7 +58,7 @@ async fn main()  -> Result<(), Box<dyn std::error::Error>>{
                         
                         //(if chat id is tgchannel id)
                         if chatid == tgchannelid.parse::<i64>().unwrap() {
-                            let existing_post = posts_collection.find_one(doc!{"text": &text}).await?;
+                            let existing_post = posts_collection.find_one(doc!{"text": &text}, None).await?;
                             if existing_post.is_none() {
                                 let post = doc! {
                                     "text": &text,
@@ -67,8 +66,8 @@ async fn main()  -> Result<(), Box<dyn std::error::Error>>{
                                     "_id": oid::ObjectId::new(),
                                 };
                                 match posts_collection.insert_one(post.clone(),None).await {
-                                    Ok(resultingPost) => {
-                                        println!("New post added to db: {:?}", text);
+                                    Ok(resulting_post) => {
+                                        println!("New post added to db: {:?}", resulting_post);
                                     }
                                     Err(e) => {
                                         println!("Error adding post to db: {:?}", e);
@@ -96,5 +95,6 @@ async fn main()  -> Result<(), Box<dyn std::error::Error>>{
 }
 
 fn handle_req(req: &Request) -> Response {
+    println!("Request: {:?}", req);
     Response::text("hello cHAT")
-}
+} 
