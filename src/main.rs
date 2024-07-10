@@ -23,6 +23,11 @@ async fn main() {
     info!("Hello, chat program started!");
     dotenv::dotenv().ok();
     
+
+    let mongoclient = Client::with_uri_str(mongouri).await?;
+    let db = mongoclient.database("vicweb");
+    let posts_collection: Collection<Document> = db.collection("posts");
+
     let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
 
     let tgtoken = dotenv::var("TG_TOKEN").unwrap();
@@ -45,7 +50,17 @@ async fn main() {
     info!("Listening on http://{}", addr);
 
     teloxide::repl(tgbot.clone(), |bot: Bot, msg: Message| async move {
+        let existing_post = posts_collection.find_one(doc!{"text": &text}, None)?;
         info!("Received a message with content: {:?}", msg.text());
+
+        if existing_post.is_none() {
+            let post = doc! {
+                "text": &text,
+                "created_at": chrono::Utc::now().timestamp(),
+                "_id": oid::ObjectId::new(),
+
+                posts_collection.insert_one(post, None)?;
+            };
         Ok(())
     })
     .await;
@@ -59,5 +74,7 @@ async fn main() {
 
 async fn handle_request(req: Request<Body>, _bot: Arc<Mutex<Bot>>) -> Result<Response<Body>> {
     info!("Received a request to the webserver, {:?}", req.uri());
+    let postsINDB = posts_collection.find(doc!{}, None)?;
     Ok(Response::new(Body::from("Hello chat")))
+    
 }
