@@ -33,9 +33,9 @@ async fn main() {
     .await
     .expect("Failed to initialize standalone client.");
     let db: Collection<Document> = mongo_client.database("vicweb").collection("posts");
-
+    
     let collection_arc = Arc::new(db);
-    info!("Connected to the database");
+    info!("Connected to the database, {:?}",collection_arc.clone().find(None,None).await);
 
     info!("Starting the server");
     let web_server = tokio::spawn(start_web_server(collection_arc.clone()));
@@ -46,8 +46,9 @@ async fn main() {
 }
 
 
-async fn handle_request(req: Request<Body>,mongo: Arc<Collection<Document>>) -> Result<Response<Body>, Infallible> {
+async fn handle_request(req: Request<Body>,mongo: Arc<Collection<Document>>) -> Result<Response<Body>> {
 
+    info!("Trying to fulfull web request");
     let data = mongo.find(None, None).await.expect("Failed to execute find.");
     info!("Received a request to the webserver, {:?}", req.uri());
     info!("Data from the database: {:?}", data);
@@ -79,6 +80,9 @@ async fn start_telegram_bot(mongo: Arc<Collection<Document>>) {
     let bot = Bot::from_env();
     info!("Bot successfully created");
     teloxide::repl(bot, |_bot: Bot, msg: Message| async move {
+        let content = msg.text();
+
+
         info!("Received a message from the bot, {:?}", msg.text());
         Ok(())
     })
