@@ -16,65 +16,51 @@ use env_logger::Env;
 use teloxide::prelude::*;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+
+
 #[tokio::main]
 async fn main() {
+    dotenv::dotenv().ok();
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
-    info!("Hello, chat program started!");
-    dotenv::dotenv().ok();
-    
+    info!("Starting the server");
+    let web_server = tokio::spawn(start_web_server());
+    let telegram_bot = tokio::spawn(start_telegram_bot());
 
-    let mongoclient = Client::with_uri_str(mongouri).await?;
-    let db = mongoclient.database("vicweb");
-    let posts_collection: Collection<Document> = db.collection("posts");
+    let _ = tokio::try_join!(web_server, telegram_bot);
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
-
-    let tgtoken = dotenv::var("TG_TOKEN").unwrap();
-    let tgchannelid = dotenv::var("TG_CHAT_ID").unwrap();
-    let tgbot = Bot::from_env();
-    let tgbot = Arc::new(Mutex::new(tgbot));
-    
-    let tgbot_clone = Arc::clone(&tgbot);
-
-    let make_svc = make_service_fn(move |_conn| {
-        let tgbot_clone = Arc::clone(&tgbot_clone);
-        async move {
-            Ok::<_, Infallible>(service_fn(move |req| {
-                handle_request(req, Arc::clone(&tgbot_clone))
-            }))
-        }
-    });
-
-    let webserver = Server::bind(&addr).serve(make_svc);
-    info!("Listening on http://{}", addr);
-
-    teloxide::repl(tgbot.clone(), |bot: Bot, msg: Message| async move {
-        let existing_post = posts_collection.find_one(doc!{"text": &text}, None)?;
-        info!("Received a message with content: {:?}", msg.text());
-
-        if existing_post.is_none() {
-            let post = doc! {
-                "text": &text,
-                "created_at": chrono::Utc::now().timestamp(),
-                "_id": oid::ObjectId::new(),
-
-                posts_collection.insert_one(post, None)?;
-            };
-        Ok(())
-    })
-    .await;
-
-    if let Err(e) = webserver.await {
-        info!("server error: {}", e);
-    }
-    
 }
 
 
-async fn handle_request(req: Request<Body>, _bot: Arc<Mutex<Bot>>) -> Result<Response<Body>> {
+async fn handle_request(req: Request<Body>) -> Result<Response<Body>> {
     info!("Received a request to the webserver, {:?}", req.uri());
-    let postsINDB = posts_collection.find(doc!{}, None)?;
     Ok(Response::new(Body::from("Hello chat")))
-    
+}
+
+async fn start_web_server() {
+    let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
+
+    let make_svc = make_service_fn(|_conn| {
+        async {
+            Ok::<_, Infallible>(service_fn(handle_request))
+        }
+    });
+
+    let server = Server::bind(&addr).serve(make_svc);
+
+    info!("Listening on http://{}", addr);
+
+    if let Err(e) = server.await {
+        eprintln!("server error: {}", e);
+    }
+}
+
+async fn start_telegram_bot() {
+    let bot = Bot::from_env();
+    info!("Bot successfully created");
+    teloxide::repl(bot, |_bot: Bot, msg: Message| async move {
+        info!("Received a message from the bot, {:?}", msg.text());
+        Ok(())
+    })
+    .await;
 }
