@@ -1,26 +1,29 @@
+use chrono::Local;
 use dotenv;
 
 use mongodb::{ 
     bson::{Document, doc, oid},
     Client, Collection,
     error::Result,
-    error::Error
 }; 
+use serenity::client::Client as SerenityClient;
 use futures::stream::TryStreamExt;use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Request, Response, Server};
+use serenity::prelude::*;
+use serenity::async_trait;
+use serenity::model::channel::Message as DiscordMessage;
 use std::convert::Infallible;
 use std::net::SocketAddr;
-use log::{info, LevelFilter};
+use log::info;
 use env_logger::Env;
 use teloxide::prelude::*;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 
 use serde::{ Deserialize, Serialize };
 use serde_json;
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct Post {
-    _id: oid::ObjectId,
+    id: oid::ObjectId,
     date: String,
     content: String,
 }
@@ -102,12 +105,73 @@ async fn start_web_server(mongo: Arc<Collection<Document>>) {
 async fn start_telegram_bot(mongo: Arc<Collection<Document>>) {
     let bot = Bot::from_env();
     info!("Bot successfully created");
-    teloxide::repl(bot, |_bot: Bot, msg: Message| async move {
-        let content = msg.text();
+    teloxide::repl(bot, move |_bot: Bot, msg: Message| {
+        let mongo = Arc::clone(&mongo);
+        async move {
+            let content = msg.text();
 
+            let possible_post = mongo.find_one(doc! {"content": content}, None).await.expect("Failed to execute find_one.");
+            if possible_post.is_none() {
+                mongo.insert_one(doc! {
+                    "_id": oid::ObjectId::new(),
+                    "date": Local::now().to_string(),
+                    "content": content.unwrap().to_string(),
+                }, None).await.expect("Failed to insert document.");
+                info!("Inserted a new post into the database");
+                return Ok(())
+            }
 
-        info!("Received a message from the bot, {:?}", msg.text());
-        Ok(())
+            info!("Ignoring message since its already in the database");
+            info!("Received a message from the bot, {:?}", msg.text());
+            Ok(())
+        }
     })
     .await;
+}
+
+
+struct Handler {
+    mongo: Arc<Collection<Document>>,
+}
+
+#[async_trait]
+impl EventHandler for Handler {
+    async fn message(&self, ctx: Context, msg: DiscordMessage) {
+        if msg.author.id.get() == std::env::var("DISCORD_OWNER_ID").unwrap().parse::<u64>().unwrap() {
+            return;
+        }
+        if msg.content == "!ping" {
+            if let Err(why) = msg.channel_id.say(&ctx.http, "Pong!").await {
+                println!("Error sending message: {why:?}");
+            }
+            return ;
+        }
+            let possible_post = self.mongo.find_one(doc! {"content": &msg.content}, None).await.expect("Failed to execute find_one.");
+            if possible_post.is_none() {
+                self.mongo.insert_one(doc! {
+                    "_id": oid::ObjectId::new(),
+                    "date": Local::now().to_string(),
+                    "content": &msg.content,
+                }, None).await.expect("Failed to insert document.");
+                info!("Inserted a new post into the database");
+                return;
+            }
+
+            info!("Ignoring message since its already in the database");
+            info!("Received a message from the bot, {:?}", &msg.content);
+
+    }
+}
+
+async fn start_discord_bot(mongo: Arc<Collection<Document>>) {
+    let token = &std::env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
+    let intents = GatewayIntents::GUILD_MESSAGES
+        | GatewayIntents::DIRECT_MESSAGES
+        | GatewayIntents::MESSAGE_CONTENT;
+        let mut client =
+        SerenityClient::builder(&token, intents).event_handler(Handler {mongo}).await.expect("Error creating client");
+
+    if let Err(why) = client.start().await {
+        println!("Client error: {why:?}");
+    }
 }
