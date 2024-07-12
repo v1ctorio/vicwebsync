@@ -20,6 +20,7 @@ use serde::{ Deserialize, Serialize };
 use serde_json;
 #[derive(Serialize, Deserialize, Debug)]
 struct Post {
+    _id: oid::ObjectId,
     date: String,
     content: String,
 }
@@ -32,7 +33,7 @@ async fn main() {
     let mongo_client = Client::with_uri_str(&std::env::var("MONGO_URI").expect("MONGO_URI must be set"))
     .await
     .expect("Failed to initialize standalone client.");
-    let db: Collection<Document> = mongo_client.database("vicweb").collection("posts");
+    let db: Collection<Document> = mongo_client.database("test").collection("posts");
     
     let collection_arc = Arc::new(db);
     info!("Connected to the database, {:?}",collection_arc.clone().find(None,None).await);
@@ -49,28 +50,29 @@ async fn main() {
 async fn handle_request(req: Request<Body>,mongo: Arc<Collection<Document>>) -> Result<Response<Body>> {
 
     info!("Trying to fulfull web request");
-    let data = mongo.find(None, None).await.expect("Failed to execute find.");
     info!("Received a request to the webserver, {:?}", req.uri());
-    info!("Data from the database: {:?}", data);
-
+    
     let uri = req.uri().path();
-
+    
     if uri == "/posts" {
-        let mut cursor = mongo.find(None, None).await.expect("Failed to execute find.");
-        let mut posts: Vec<Post> = Vec::new();
+        let cursor = mongo.find(None, None).await.expect("Failed to execute find.");
+        //let mut posts: Vec<Post> = Vec::new();
+        
+        
+        let posts: Vec<_> = cursor.try_collect().await?;
+        
 
-
-        let mut response = String::new();
-               
-
-        while let Some(doc) = cursor.try_next().await? {
-            println!("{:?}", doc);
-            posts.push(Post {
-                date: doc.get_str("date").unwrap().to_string(),
-                content: doc.get_str("content").unwrap().to_string(),
-            });
-        }
-        response = serde_json::to_string(&posts).unwrap();
+        info!("Data from the database: {:?}", posts);
+        let response = serde_json::to_string(&posts).unwrap();        
+        return Ok(Response::new(Body::from(response)));
+    }
+    if uri == "/post" {
+        let q = req.uri().query().unwrap();
+        
+        let post = mongo.find_one(doc! {"_id": oid::ObjectId::parse_str(q).unwrap()}, None).await.expect("Failed to execute find_one.");
+        
+        let post = post.unwrap();
+        let response = serde_json::to_string(&post).unwrap();
         return Ok(Response::new(Body::from(response)));
     }
     Ok(Response::new(Body::from("Hello chat")))
