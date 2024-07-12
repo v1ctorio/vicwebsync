@@ -2216,10 +2216,12 @@ dependencies = [
  "chrono",
  "dotenv",
  "env_logger",
+ "futures",
  "hyper",
  "log",
  "mongodb",
  "serde",
+ "serde_json",
  "teloxide",
  "tokio",
 ]

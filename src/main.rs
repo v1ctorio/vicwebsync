@@ -6,8 +6,7 @@ use mongodb::{
     error::Result,
     error::Error
 }; 
-
-use hyper::service::{make_service_fn, service_fn};
+use futures::stream::TryStreamExt;use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Request, Response, Server};
 use std::convert::Infallible;
 use std::net::SocketAddr;
@@ -18,6 +17,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use serde::{ Deserialize, Serialize };
+use serde_json;
 #[derive(Serialize, Deserialize, Debug)]
 struct Post {
     date: String,
@@ -52,6 +52,27 @@ async fn handle_request(req: Request<Body>,mongo: Arc<Collection<Document>>) -> 
     let data = mongo.find(None, None).await.expect("Failed to execute find.");
     info!("Received a request to the webserver, {:?}", req.uri());
     info!("Data from the database: {:?}", data);
+
+    let uri = req.uri().path();
+
+    if uri == "/posts" {
+        let mut cursor = mongo.find(None, None).await.expect("Failed to execute find.");
+        let mut posts: Vec<Post> = Vec::new();
+
+
+        let mut response = String::new();
+               
+
+        while let Some(doc) = cursor.try_next().await? {
+            println!("{:?}", doc);
+            posts.push(Post {
+                date: doc.get_str("date").unwrap().to_string(),
+                content: doc.get_str("content").unwrap().to_string(),
+            });
+        }
+        response = serde_json::to_string(&posts).unwrap();
+        return Ok(Response::new(Body::from(response)));
+    }
     Ok(Response::new(Body::from("Hello chat")))
 }
 
