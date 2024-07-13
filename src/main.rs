@@ -36,7 +36,7 @@ async fn main() {
     let mongo_client = Client::with_uri_str(&std::env::var("MONGO_URI").expect("MONGO_URI must be set"))
     .await
     .expect("Failed to initialize standalone client.");
-    let db: Collection<Document> = mongo_client.database("test").collection("posts");
+    let db: Collection<Document> = mongo_client.database("vicweb").collection("posts");
     
     let collection_arc = Arc::new(db);
     info!("Connected to the database, {:?}",collection_arc.clone().find(None,None).await);
